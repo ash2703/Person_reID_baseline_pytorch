@@ -16,6 +16,8 @@ import time
 import os
 import scipy.io
 import yaml
+from tqdm import tqdm
+import random
 import math
 from model import ft_net, ft_net_dense, ft_net_NAS, PCB, PCB_test
 
@@ -118,17 +120,17 @@ if opt.multi:
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize,
                                              shuffle=False, num_workers=16) for x in ['gallery','query','multi-query']}
 else:
-    image_datasets = {x: datasets.ImageFolder( os.path.join(data_dir,x) ,data_transforms) for x in ['gallery','query']}
+    image_datasets = {x: datasets.ImageFolder( os.path.join(data_dir,x) ,data_transforms) for x in ['gallery/hm_cam1','query/hm_cam1']}
     dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize,
-                                             shuffle=False, num_workers=16) for x in ['gallery','query']}
-class_names = image_datasets['query'].classes
+                                             shuffle=False, num_workers=16) for x in ['gallery/hm_cam1','query/hm_cam1']}
+class_names = image_datasets['query/hm_cam1'].classes
 use_gpu = torch.cuda.is_available()
 
 ######################################################################
 # Load model
 #---------------------------
 def load_network(network):
-    save_path = os.path.join('./model',name,'net_%s.pth'%opt.which_epoch)
+    save_path = "model/ft_ResNet50/net_19.pth"
     network.load_state_dict(torch.load(save_path))
     return network
 
@@ -148,11 +150,11 @@ def fliplr(img):
 def extract_feature(model,dataloaders):
     features = torch.FloatTensor()
     count = 0
-    for data in dataloaders:
+    for data in tqdm(dataloaders):
         img, label = data
         n, c, h, w = img.size()
         count += n
-        print(count)
+        # print(count)
         ff = torch.FloatTensor(n,512).zero_().cuda()
         if opt.PCB:
             ff = torch.FloatTensor(n,2048,6).zero_().cuda() # we have six parts
@@ -165,7 +167,9 @@ def extract_feature(model,dataloaders):
                 if scale != 1:
                     # bicubic is only  available in pytorch>= 1.1
                     input_img = nn.functional.interpolate(input_img, scale_factor=scale, mode='bicubic', align_corners=False)
+                # print(input_img.shape, type(input_img))
                 outputs = model(input_img) 
+                # print(type(outputs), outputs.shape)
                 ff += outputs
         # norm feature
         if opt.PCB:
@@ -180,6 +184,7 @@ def extract_feature(model,dataloaders):
             ff = ff.div(fnorm.expand_as(ff))
 
         features = torch.cat((features,ff.data.cpu()), 0)
+    print(type(features), features.shape)
     return features
 
 def get_id(img_path):
@@ -187,9 +192,9 @@ def get_id(img_path):
     labels = []
     for path, v in img_path:
         #filename = path.split('/')[-1]
-        filename = os.path.basename(path)
-        label = filename[0:4]
-        camera = filename.split('c')[1]
+        # filename = os.path.basename(path)
+        label = path.split("/")[-2]
+        camera = random.randint(0, 5)
         if label[0:2]=='-1':
             labels.append(-1)
         else:
@@ -197,67 +202,68 @@ def get_id(img_path):
         camera_id.append(int(camera[0]))
     return camera_id, labels
 
-gallery_path = image_datasets['gallery'].imgs
-query_path = image_datasets['query'].imgs
+gallery_path = image_datasets['gallery/hm_cam1'].imgs
+print(gallery_path[0:10])
+query_path = image_datasets['query/hm_cam1'].imgs
 
 gallery_cam,gallery_label = get_id(gallery_path)
 query_cam,query_label = get_id(query_path)
 
-if opt.multi:
-    mquery_path = image_datasets['multi-query'].imgs
-    mquery_cam,mquery_label = get_id(mquery_path)
+# if opt.multi:
+#     mquery_path = image_datasets['multi-query'].imgs
+#     mquery_cam,mquery_label = get_id(mquery_path)
 
-######################################################################
-# Load Collected data Trained model
-print('-------test-----------')
-if opt.use_dense:
-    model_structure = ft_net_dense(opt.nclasses)
-elif opt.use_NAS:
-    model_structure = ft_net_NAS(opt.nclasses)
-else:
-    model_structure = ft_net(opt.nclasses, stride = opt.stride)
+# ######################################################################
+# # Load Collected data Trained model
+# print('-------test-----------')
+# if opt.use_dense:
+#     model_structure = ft_net_dense(opt.nclasses)
+# elif opt.use_NAS:
+#     model_structure = ft_net_NAS(opt.nclasses)
+# else:
+#     model_structure = ft_net(opt.nclasses, stride = opt.stride)
 
-if opt.PCB:
-    model_structure = PCB(opt.nclasses)
+# if opt.PCB:
+#     model_structure = PCB(opt.nclasses)
 
-#if opt.fp16:
-#    model_structure = network_to_half(model_structure)
+# #if opt.fp16:
+# #    model_structure = network_to_half(model_structure)
 
-model = load_network(model_structure)
+# model = load_network(model_structure)
 
-# Remove the final fc layer and classifier layer
-if opt.PCB:
-    #if opt.fp16:
-    #    model = PCB_test(model[1])
-    #else:
-        model = PCB_test(model)
-else:
-    #if opt.fp16:
-        #model[1].model.fc = nn.Sequential()
-        #model[1].classifier = nn.Sequential()
-    #else:
-        model.classifier.classifier = nn.Sequential()
+# # Remove the final fc layer and classifier layer
+# if opt.PCB:
+#     #if opt.fp16:
+#     #    model = PCB_test(model[1])
+#     #else:
+#         model = PCB_test(model)
+# else:
+#     #if opt.fp16:
+#         #model[1].model.fc = nn.Sequential()
+#         #model[1].classifier = nn.Sequential()
+#     #else:
+#         model.classifier.classifier = nn.Sequential()
 
-# Change to test mode
-model = model.eval()
-if use_gpu:
-    model = model.cuda()
+# # Change to test mode
+# model = model.eval()
+# if use_gpu:
+#     model = model.cuda()
 
-# Extract feature
-with torch.no_grad():
-    gallery_feature = extract_feature(model,dataloaders['gallery'])
-    query_feature = extract_feature(model,dataloaders['query'])
-    if opt.multi:
-        mquery_feature = extract_feature(model,dataloaders['multi-query'])
+# # Extract feature
+# with torch.no_grad():
+#     gallery_feature = extract_feature(model,dataloaders['gallery/hm_cam1'])
+#     query_feature = extract_feature(model,dataloaders['query/hm_cam1'])
+#     if opt.multi:
+#         mquery_feature = extract_feature(model,dataloaders['multi-query'])
     
-# Save to Matlab for check
-result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam}
-scipy.io.savemat('pytorch_result.mat',result)
+# # Save to Matlab for check
+# result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam}
+# scipy.io.savemat('pytorch_result.mat',result)
 
-print(opt.name)
-result = './model/%s/result.txt'%opt.name
-os.system('python evaluate_gpu.py | tee -a %s'%result)
+# print(opt.name)
+# result = './model/%s/result.txt'%opt.name
+# os.system('python evaluate_gpu.py | tee -a %s'%result)
 
-if opt.multi:
-    result = {'mquery_f':mquery_feature.numpy(),'mquery_label':mquery_label,'mquery_cam':mquery_cam}
-    scipy.io.savemat('multi_query.mat',result)
+# if opt.multi:
+#     result = {'mquery_f':mquery_feature.numpy(),'mquery_label':mquery_label,'mquery_cam':mquery_cam}
+#     scipy.io.savemat('multi_query.mat',result)
