@@ -194,7 +194,7 @@ def get_id(img_path):
         #filename = path.split('/')[-1]
         # filename = os.path.basename(path)
         label = path.split("/")[-2]
-        camera = random.randint(0, 5)
+        camera = [random.randint(0, 5)]
         if label[0:2]=='-1':
             labels.append(-1)
         else:
@@ -209,61 +209,61 @@ query_path = image_datasets['query/hm_cam1'].imgs
 gallery_cam,gallery_label = get_id(gallery_path)
 query_cam,query_label = get_id(query_path)
 
-# if opt.multi:
-#     mquery_path = image_datasets['multi-query'].imgs
-#     mquery_cam,mquery_label = get_id(mquery_path)
+if opt.multi:
+    mquery_path = image_datasets['multi-query'].imgs
+    mquery_cam,mquery_label = get_id(mquery_path)
 
-# ######################################################################
-# # Load Collected data Trained model
-# print('-------test-----------')
-# if opt.use_dense:
-#     model_structure = ft_net_dense(opt.nclasses)
-# elif opt.use_NAS:
-#     model_structure = ft_net_NAS(opt.nclasses)
-# else:
-#     model_structure = ft_net(opt.nclasses, stride = opt.stride)
+######################################################################
+# Load Collected data Trained model
+print('-------test-----------')
+if opt.use_dense:
+    model_structure = ft_net_dense(opt.nclasses)
+elif opt.use_NAS:
+    model_structure = ft_net_NAS(opt.nclasses)
+else:
+    model_structure = ft_net(opt.nclasses, stride = opt.stride)
 
-# if opt.PCB:
-#     model_structure = PCB(opt.nclasses)
+if opt.PCB:
+    model_structure = PCB(opt.nclasses)
 
-# #if opt.fp16:
-# #    model_structure = network_to_half(model_structure)
+#if opt.fp16:
+#    model_structure = network_to_half(model_structure)
 
-# model = load_network(model_structure)
+model = load_network(model_structure)
 
-# # Remove the final fc layer and classifier layer
-# if opt.PCB:
-#     #if opt.fp16:
-#     #    model = PCB_test(model[1])
-#     #else:
-#         model = PCB_test(model)
-# else:
-#     #if opt.fp16:
-#         #model[1].model.fc = nn.Sequential()
-#         #model[1].classifier = nn.Sequential()
-#     #else:
-#         model.classifier.classifier = nn.Sequential()
+# Remove the final fc layer and classifier layer
+if opt.PCB:
+    #if opt.fp16:
+    #    model = PCB_test(model[1])
+    #else:
+        model = PCB_test(model)
+else:
+    #if opt.fp16:
+        #model[1].model.fc = nn.Sequential()
+        #model[1].classifier = nn.Sequential()
+    #else:
+        model.classifier.classifier = nn.Sequential()
 
-# # Change to test mode
-# model = model.eval()
-# if use_gpu:
-#     model = model.cuda()
+# Change to test mode
+model = model.eval()
+if use_gpu:
+    model = model.cuda()
 
-# # Extract feature
-# with torch.no_grad():
-#     gallery_feature = extract_feature(model,dataloaders['gallery/hm_cam1'])
-#     query_feature = extract_feature(model,dataloaders['query/hm_cam1'])
-#     if opt.multi:
-#         mquery_feature = extract_feature(model,dataloaders['multi-query'])
+# Extract feature
+with torch.no_grad():
+    gallery_feature = extract_feature(model,dataloaders['gallery/hm_cam1'])
+    query_feature = extract_feature(model,dataloaders['query/hm_cam1'])
+    if opt.multi:
+        mquery_feature = extract_feature(model,dataloaders['multi-query'])
     
-# # Save to Matlab for check
-# result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam}
-# scipy.io.savemat('pytorch_result.mat',result)
+# Save to Matlab for check
+result = {'gallery_f':gallery_feature.numpy(),'gallery_label':gallery_label,'gallery_cam':gallery_cam,'query_f':query_feature.numpy(),'query_label':query_label,'query_cam':query_cam}
+scipy.io.savemat('pytorch_result.mat',result)
 
-# print(opt.name)
-# result = './model/%s/result.txt'%opt.name
-# os.system('python evaluate_gpu.py | tee -a %s'%result)
+print(opt.name)
+result = './model/%s/result.txt'%opt.name
+os.system('python evaluate_gpu.py | tee -a %s'%result)
 
-# if opt.multi:
-#     result = {'mquery_f':mquery_feature.numpy(),'mquery_label':mquery_label,'mquery_cam':mquery_cam}
-#     scipy.io.savemat('multi_query.mat',result)
+if opt.multi:
+    result = {'mquery_f':mquery_feature.numpy(),'mquery_label':mquery_label,'mquery_cam':mquery_cam}
+    scipy.io.savemat('multi_query.mat',result)
